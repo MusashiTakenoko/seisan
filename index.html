@@ -217,33 +217,49 @@ const firebaseConfig = {
         }
 
         // レシート有り：Drive設定が未完ならレシート無しで保存
-        if(!CLIENT_ID || !FOLDER_ID || CLIENT_ID.includes("YOUR_GOOGLE_OAUTH_CLIENT_ID")){
-          try{
-            await savePurchase(null, {title, amount, payer, dateStr});
-            toast("Drive未設定のためレシートなしで保存しました。");
-            $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
-          }catch(err){
-            log("save error (no receipt; drive unconfigured): "+(err?.message||err));
-            toast("保存に失敗しました: "+(err?.message||err));
-          }
-          return;
-        }
+// レシート有り：Drive設定が未完ならレシート無しで保存
+if(!CLIENT_ID || !FOLDER_ID || CLIENT_ID.includes("YOUR_GOOGLE_OAUTH_CLIENT_ID")){
+  log("branch: receipt=yes but drive not configured");
+  try{
+    await savePurchase(null, {title, amount, payer, dateStr});
+    toast("Drive未設定のためレシートなしで保存しました。");
+    $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
+  }catch(err){
+    log("save error (no receipt; drive unconfigured): "+(err?.message||err));
+    toast("保存に失敗しました: "+(err?.message||err));
+  }
+  return;
+}
 
-        const ok = await ensureGisReady(4000);
-        if(!ok || !tokenClient){
-          try{
-            await savePurchase(null, {title, amount, payer, dateStr});
-            toast("Google連携を初期化できず、レシートなしで保存しました。");
-            $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
-          }catch(err){
-            log("save error (no receipt; gis failed): "+(err?.message||err));
-            toast("保存に失敗しました: "+(err?.message||err));
-          }
-          return;
-        }
+toast("Google連携を初期化しています…（最大10秒）");
+log("branch: receipt=yes; loading GIS…");
+const ok = await ensureGisReady(10000);
 
-        // 認可要求（成功時は callback 内で doUploadAndSave → savePurchase）
-        tokenClient.requestAccessToken();
+if(!ok || !tokenClient){
+  log("GIS init failed (timeout or error).");
+  toast("Google連携の初期化に失敗。『再試行』を押すか、ポップアップ許可を確認してください。");
+  // 手動リトライUI（1回だけ生成）
+  if(!document.getElementById("retryDrive")){
+    const btn = document.createElement("button");
+    btn.id = "retryDrive";
+    btn.type = "button";
+    btn.textContent = "Drive にサインインしてアップロードを再試行";
+    btn.style.marginTop = "8px";
+    btn.className = "btn-primary";
+    btn.onclick = async ()=>{
+      toast("Google連携を再試行中…");
+      const ok2 = await ensureGisReady(10000);
+      if(ok2 && tokenClient){ tokenClient.requestAccessToken(); }
+      else { toast("再試行失敗（ポップアップ許可やネット環境をご確認ください）"); }
+    };
+    document.querySelector(".actions").appendChild(btn);
+  }
+  return;
+}
+
+// ここまで来たら認可要求。成功時は callback 内で doUploadAndSave → savePurchase
+log("GIS ready. requesting access token…");
+tokenClient.requestAccessToken();
 
       }catch(err){
         log("handleSubmit exception: "+(err?.message||err));
@@ -369,5 +385,6 @@ const firebaseConfig = {
   </main>
 </body>
 </html>
+
 
 
