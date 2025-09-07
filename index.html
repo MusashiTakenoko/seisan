@@ -294,7 +294,7 @@ async function doUploadAndSave(){
         const metaPart = 'Content-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(metadata);
         const fileHeader = `Content-Type: ${file.type || "application/octet-stream"}\r\n\r\n`;
         const arrBuf = await file.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrBuf)));
+        const base64 = arrayBufferToBase64(arrBuf);
         const body = delimiter + metaPart + delimiter + fileHeader + base64 + closeDelim;
 
         const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",{
@@ -398,6 +398,7 @@ async function doUploadAndSave(){
   </main>
 </body>
 </html>
+
 
 
 
