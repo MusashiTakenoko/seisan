@@ -7,8 +7,7 @@
   <style>
     :root{
       --bg:#f7f8fb; --card:#ffffff; --text:#111827; --muted:#6b7280; --border:#e5e7eb;
-      --accent:#2563eb; --accent-2:#3b82f6; --ok:#16a34a; --warn:#ef4444;
-      --shadow:0 10px 30px rgba(0,0,0,.08); --radius:16px;
+      --accent:#2563eb; --accent-2:#3b82f6; --shadow:0 10px 30px rgba(0,0,0,.08); --radius:16px;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -22,7 +21,7 @@
     header{position:sticky; top:0; z-index:20; background:rgba(255,255,255,.85);
       backdrop-filter:saturate(180%) blur(10px); border-bottom:1px solid var(--border); box-shadow: var(--shadow);}
     .navwrap{display:flex; align-items:center; justify-content:space-between; max-width:1100px; margin:0 auto; padding:14px 18px}
-    h1{font-size:18px; margin:0; letter-spacing:.2px}
+    h1{font-size:18px; margin:0}
     .link{color:var(--accent); text-decoration:none; font-weight:600; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff}
     .link:hover{background:#f8fafc}
     main{max-width:1100px; margin:26px auto; padding:0 18px}
@@ -49,7 +48,7 @@
     .toast.show{opacity:1}
     .thumb{width:120px; height:120px; object-fit:cover; border:1px solid var(--border); border-radius:12px; display:none; margin-top:8px}
     .title-hero{
-      font-size:22px; font-weight:800; letter-spacing:.3px; margin:0;
+      font-size:22px; font-weight:800; margin:0;
       background: linear-gradient(90deg,#0f172a, #1f2937); -webkit-background-clip:text; background-clip:text; color:transparent;
     }
     select{
@@ -60,7 +59,7 @@
     select option,select optgroup{background:#fff; color:#111827}
   </style>
 
-  <!-- Firebase SDK（必要） -->
+  <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
     import {
@@ -68,24 +67,23 @@
     } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
     // ▼▼▼ あなたの Firebase 設定に置き換え ▼▼▼
-const firebaseConfig = {
-  apiKey: "AIzaSyCXzUbcaVjRH67gIKkGcCadtaNGZv-MA7Q",
-  authDomain: "seisan-2025.firebaseapp.com",
-  projectId: "seisan-2025",
-  storageBucket: "seisan-2025.firebasestorage.app",
-  messagingSenderId: "399355996595",
-  appId: "1:399355996595:web:61425aa5c33ac43f2bc3c6",
-  measurementId: "G-23NZGYKTRL"
-};
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "XXXX",
+      appId: "1:XXXX:web:YYYY"
+    };
     // ▲▲▲ ここまで ▲▲▲
 
     const app = initializeApp(firebaseConfig);
-    // ★ 長輪講を強制（ネットや企業Wi-Fiでのハング回避）
+    // ネットワーク環境でのハング回避
     const db  = initializeFirestore(app, { experimentalForceLongPolling: true });
 
-    // ====== Google Drive（必要時だけ動的ロード） ======
-    const CLIENT_ID = "67340506451-l8r92rinlbdsoj3ks4p1erlplo53qd0i.apps.googleusercontent.com"; // ←置換
-    const FOLDER_ID = "1im8F9n9YE2NCE0BCREJBCB2Fc1r0YUyv";                                   // ←置換
+    // ====== （必要時のみ）Google Drive アップロード用設定 ======
+    const CLIENT_ID = "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com"; // ←置換
+    const FOLDER_ID = "YOUR_DRIVE_FOLDER_ID";                                   // ←置換
     const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
     let tokenClient = null, accessToken = null, gisLoaded = false, gisLoading = false;
 
@@ -131,6 +129,16 @@ const firebaseConfig = {
     const room = getParam("room");
     const MEMBERS = ["やまかん","もりがく","こうすけ"];
 
+    // ① デバッグ出力エリアへログ
+    function log(msg){
+      console.log(msg);
+      const el = document.getElementById("debug");
+      if(el){ el.textContent = (el.textContent?el.textContent+"\n":"") + String(msg); }
+    }
+    // ② グローバルエラーハンドラ
+    window.addEventListener("error", e => { log("onerror: "+(e?.message||e)); });
+    window.addEventListener("unhandledrejection", e => { log("unhandledrejection: "+(e?.reason?.message||e.reason||e)); });
+
     // 全角→半角（数字/カンマ/ドット）
     function toHalfWidthDigits(str){
       return String(str).replace(/[０-９，．]/g, ch => {
@@ -145,15 +153,7 @@ const firebaseConfig = {
       const n = Number(s.replace(/[^\d]/g,""));
       return isFinite(n) ? n : 0;
     }
-    function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), 2200); }
-
-    // Promise にタイムアウトを付けるヘルパー
-    function withTimeout(promise, ms=8000){
-      return Promise.race([
-        promise,
-        new Promise((_, rej)=> setTimeout(()=> rej(new Error("timeout")), ms))
-      ]);
-    }
+    function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), 2400); }
 
     window.addEventListener("load", ()=>{
       $("linkDash").href = `./dashboard.html?room=${encodeURIComponent(room||"")}`;
@@ -178,27 +178,22 @@ const firebaseConfig = {
       });
     });
 
-    // ====== 送信処理（0円OK／レシート任意／タイムアウト保護） ======
+    // ====== 送信処理（0円OK／レシート任意／必ず復帰） ======
     window.handleSubmit = async (e)=>{
       e.preventDefault();
       const btn = $("submitBtn");
       btn.disabled = true;
       btn.textContent = "送信中…";
       try{
-        // 日付フォールバック
-        if (!$("date").value) {
-          const d = new Date();
-          $("date").value = d.toISOString().slice(0,10);
-        }
+        if (!$("date").value) { const d = new Date(); $("date").value = d.toISOString().slice(0,10); }
 
         const title = $("title").value.trim();
         const payer = $("payer").value;
         const dateStr = $("date").value;
-
-        // 0円はOK、ただし空欄はNG（空欄=文字がない）
         const amountStr = $("amount").value.trim();
         const amount = parseAmountComma(amountStr);
 
+        // 0円OK／ただし金額欄が空文字はNG
         if(!title || !payer || !dateStr || amountStr===""){
           toast("未入力があります");
           return;
@@ -206,27 +201,30 @@ const firebaseConfig = {
 
         const file = $("file").files[0];
 
-        // レシート未選択：そのまま保存（ログイン不要）＋ タイムアウト
+        // ③ レシート無し：シンプルに保存（ログ＆復帰）
         if(!file){
           try{
-            await withTimeout(savePurchase(null, {title, amount, payer, dateStr}), 8000);
+            log("saving without receipt…");
+            await savePurchase(null, {title, amount, payer, dateStr});
             toast("保存しました ✅（レシートなし）");
             $("form").reset(); $("thumb").style.display="none";
-            $("date").value = dateStr; // 入力した日付を維持
+            $("date").value = dateStr;
           }catch(err){
-            toast("保存に時間がかかっています（通信環境をご確認ください）");
+            log("save error (no receipt): "+(err?.message||err));
+            toast("保存に失敗しました: "+(err?.message||err));
           }
           return;
         }
 
-        // レシートあり：GISが使えなければ“レシートなし保存”にフォールバック
+        // レシート有り：Drive設定が未完ならレシート無しで保存
         if(!CLIENT_ID || !FOLDER_ID || CLIENT_ID.includes("YOUR_GOOGLE_OAUTH_CLIENT_ID")){
           try{
-            await withTimeout(savePurchase(null, {title, amount, payer, dateStr}), 8000);
+            await savePurchase(null, {title, amount, payer, dateStr});
             toast("Drive未設定のためレシートなしで保存しました。");
             $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
           }catch(err){
-            toast("保存に時間がかかっています（通信環境をご確認ください）");
+            log("save error (no receipt; drive unconfigured): "+(err?.message||err));
+            toast("保存に失敗しました: "+(err?.message||err));
           }
           return;
         }
@@ -234,23 +232,23 @@ const firebaseConfig = {
         const ok = await ensureGisReady(4000);
         if(!ok || !tokenClient){
           try{
-            await withTimeout(savePurchase(null, {title, amount, payer, dateStr}), 8000);
-            toast("Google連携に失敗。レシートなしで保存しました。");
+            await savePurchase(null, {title, amount, payer, dateStr});
+            toast("Google連携を初期化できず、レシートなしで保存しました。");
             $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
           }catch(err){
-            toast("保存に時間がかかっています（通信環境をご確認ください）");
+            log("save error (no receipt; gis failed): "+(err?.message||err));
+            toast("保存に失敗しました: "+(err?.message||err));
           }
           return;
         }
 
-        // 認可要求（成功時は callback 内で doUploadAndSave → savePurchase まで実行）
+        // 認可要求（成功時は callback 内で doUploadAndSave → savePurchase）
         tokenClient.requestAccessToken();
 
       }catch(err){
+        log("handleSubmit exception: "+(err?.message||err));
         toast("送信中エラー: "+(err?.message||err));
-        try{ await withTimeout(savePurchase(null), 8000); }catch{}
       }finally{
-        // ★ 必ず復帰
         btn.disabled = false;
         btn.textContent = "登録";
       }
@@ -278,20 +276,22 @@ const firebaseConfig = {
 
         if(!res.ok){
           toast("レシートのアップロードに失敗しました。レシートなしで保存します。");
-          await withTimeout(savePurchase(null), 8000);
+          await savePurchase(null);
           return;
         }
         const data = await res.json();
-        await withTimeout(savePurchase({ id:data.id, link:data.webViewLink }), 8000);
+        await savePurchase({ id:data.id, link:data.webViewLink });
         toast("保存しました ✅");
         $("form").reset(); $("thumb").style.display="none";
         $("date").value = new Date().toISOString().slice(0,10);
       }catch(err){
-        toast("アップロード中にエラー: "+err.message);
-        await withTimeout(savePurchase(null), 8000);
+        log("doUploadAndSave error: "+(err?.message||err));
+        toast("アップロード中にエラー: "+(err?.message||err));
+        await savePurchase(null);
       }
     }
 
+    // ④ savePurchase：例外は握りつぶさず呼び出し元に投げる
     async function savePurchase(receipt, preset){
       const title = preset?.title ?? $("title").value.trim();
       const payer = preset?.payer ?? $("payer").value;
@@ -300,7 +300,7 @@ const firebaseConfig = {
       const memo = $("memo").value.trim();
       const dateObj = new Date(dateStr+"T00:00:00");
 
-      await addDoc(collection(db,"purchases"),{
+      return addDoc(collection(db,"purchases"),{
         room: (new URL(location.href).searchParams.get("room")) || null,
         title, amount, payer,
         date: Timestamp.fromDate(dateObj),
@@ -361,6 +361,9 @@ const firebaseConfig = {
         <span class="note">レシート無しの場合は事前にLINEで申告</span>
       </div>
     </form>
+
+    <!-- ① デバッグログ表示（必要に応じて外してOK） -->
+    <pre id="debug" style="white-space:pre-wrap;font-size:12px;color:#ef4444;margin-top:10px"></pre>
 
     <div class="toast" id="toast" aria-live="polite"></div>
   </main>
