@@ -123,6 +123,18 @@ const firebaseConfig = {
       });
     }
 
+    // 大きいファイルでも安全に ArrayBuffer -> base64 へ変換
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000; // 32KBずつ
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const sub = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, sub);
+  }
+  return btoa(binary);
+}
+
     // ====== ユーティリティ ======
     const $ = (id)=>document.getElementById(id);
     const getParam = (k)=>new URL(location.href).searchParams.get(k)||"";
@@ -386,6 +398,7 @@ async function doUploadAndSave(){
   </main>
 </body>
 </html>
+
 
 
 
