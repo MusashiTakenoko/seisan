@@ -82,8 +82,8 @@ const firebaseConfig = {
     const db  = initializeFirestore(app, { experimentalForceLongPolling: true });
 
     // ====== （必要時のみ）Google Drive アップロード用設定 ======
-    const CLIENT_ID = "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com"; // ←置換
-    const FOLDER_ID = "YOUR_DRIVE_FOLDER_ID";                                   // ←置換
+    const CLIENT_ID = "67340506451-l8r92rinlbdsoj3ks4p1erlplo53qd0i.apps.googleusercontent.com"; // ←置換
+    const FOLDER_ID = "1im8F9n9YE2NCE0BCREJBCB2Fc1r0YUyv";                                   // ←置換
     const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
     let tokenClient = null, accessToken = null, gisLoaded = false, gisLoading = false;
 
@@ -369,4 +369,5 @@ const firebaseConfig = {
   </main>
 </body>
 </html>
+
 
