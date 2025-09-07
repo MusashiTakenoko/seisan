@@ -44,7 +44,7 @@
     .toast{
       position:fixed; left:50%; transform:translateX(-50%); bottom:18px;
       background:#111827; color:#fff; padding:10px 14px; border-radius:12px; border:1px solid #111827;
-      box-shadow: var(--shadow); opacity:0; transition:.25s;
+      box-shadow: var(--shadow); opacity:0; transition:.25s; z-index:50;
     }
     .toast.show{opacity:1}
     .thumb{width:120px; height:120px; object-fit:cover; border:1px solid var(--border); border-radius:12px; display:none; margin-top:8px}
@@ -52,7 +52,6 @@
       font-size:22px; font-weight:800; letter-spacing:.3px; margin:0;
       background: linear-gradient(90deg,#0f172a, #1f2937); -webkit-background-clip:text; background-clip:text; color:transparent;
     }
-    /* select の矢印（ライト用） */
     select{
       appearance:none; -webkit-appearance:none; -moz-appearance:none;
       background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
@@ -64,25 +63,29 @@
   <!-- Firebase SDK（必要） -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+    import {
+      initializeFirestore, collection, addDoc, serverTimestamp, Timestamp
+    } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
     // ▼▼▼ あなたの Firebase 設定に置き換え ▼▼▼
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT.firebaseapp.com",
-      projectId: "YOUR_PROJECT",
-      storageBucket: "YOUR_PROJECT.appspot.com",
-      messagingSenderId: "XXXX",
-      appId: "1:XXXX:web:YYYY"
-    };
+const firebaseConfig = {
+  apiKey: "AIzaSyCXzUbcaVjRH67gIKkGcCadtaNGZv-MA7Q",
+  authDomain: "seisan-2025.firebaseapp.com",
+  projectId: "seisan-2025",
+  storageBucket: "seisan-2025.firebasestorage.app",
+  messagingSenderId: "399355996595",
+  appId: "1:399355996595:web:61425aa5c33ac43f2bc3c6",
+  measurementId: "G-23NZGYKTRL"
+};
     // ▲▲▲ ここまで ▲▲▲
 
     const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
+    // ★ 長輪講を強制（ネットや企業Wi-Fiでのハング回避）
+    const db  = initializeFirestore(app, { experimentalForceLongPolling: true });
 
     // ====== Google Drive（必要時だけ動的ロード） ======
-    const CLIENT_ID = "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com"; // ←置換
-    const FOLDER_ID = "YOUR_DRIVE_FOLDER_ID";                                   // ←置換
+    const CLIENT_ID = "67340506451-l8r92rinlbdsoj3ks4p1erlplo53qd0i.apps.googleusercontent.com"; // ←置換
+    const FOLDER_ID = "1im8F9n9YE2NCE0BCREJBCB2Fc1r0YUyv";                                   // ←置換
     const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
     let tokenClient = null, accessToken = null, gisLoaded = false, gisLoading = false;
 
@@ -144,6 +147,14 @@
     }
     function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), 2200); }
 
+    // Promise にタイムアウトを付けるヘルパー
+    function withTimeout(promise, ms=8000){
+      return Promise.race([
+        promise,
+        new Promise((_, rej)=> setTimeout(()=> rej(new Error("timeout")), ms))
+      ]);
+    }
+
     window.addEventListener("load", ()=>{
       $("linkDash").href = `./dashboard.html?room=${encodeURIComponent(room||"")}`;
       const d = new Date(); $("date").value = d.toISOString().slice(0,10);
@@ -195,28 +206,40 @@
 
         const file = $("file").files[0];
 
-        // レシート未選択：そのまま保存（ログイン不要）
+        // レシート未選択：そのまま保存（ログイン不要）＋ タイムアウト
         if(!file){
-          await savePurchase(null, {title, amount, payer, dateStr});
-          toast("保存しました ✅（レシートなし）");
-          $("form").reset(); $("thumb").style.display="none";
-          $("date").value = dateStr; // 入力した日付を維持
+          try{
+            await withTimeout(savePurchase(null, {title, amount, payer, dateStr}), 8000);
+            toast("保存しました ✅（レシートなし）");
+            $("form").reset(); $("thumb").style.display="none";
+            $("date").value = dateStr; // 入力した日付を維持
+          }catch(err){
+            toast("保存に時間がかかっています（通信環境をご確認ください）");
+          }
           return;
         }
 
         // レシートあり：GISが使えなければ“レシートなし保存”にフォールバック
         if(!CLIENT_ID || !FOLDER_ID || CLIENT_ID.includes("YOUR_GOOGLE_OAUTH_CLIENT_ID")){
-          toast("Drive設定が未完了のため、レシートなしで保存しました。");
-          await savePurchase(null, {title, amount, payer, dateStr});
-          $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
+          try{
+            await withTimeout(savePurchase(null, {title, amount, payer, dateStr}), 8000);
+            toast("Drive未設定のためレシートなしで保存しました。");
+            $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
+          }catch(err){
+            toast("保存に時間がかかっています（通信環境をご確認ください）");
+          }
           return;
         }
 
         const ok = await ensureGisReady(4000);
         if(!ok || !tokenClient){
-          toast("Google連携を初期化できませんでした。レシートなしで保存します。");
-          await savePurchase(null, {title, amount, payer, dateStr});
-          $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
+          try{
+            await withTimeout(savePurchase(null, {title, amount, payer, dateStr}), 8000);
+            toast("Google連携に失敗。レシートなしで保存しました。");
+            $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
+          }catch(err){
+            toast("保存に時間がかかっています（通信環境をご確認ください）");
+          }
           return;
         }
 
@@ -225,11 +248,9 @@
 
       }catch(err){
         toast("送信中エラー: "+(err?.message||err));
-        try{
-          // 最低限、データだけは残す（レシートなし）
-          await savePurchase(null);
-        }catch{}
+        try{ await withTimeout(savePurchase(null), 8000); }catch{}
       }finally{
+        // ★ 必ず復帰
         btn.disabled = false;
         btn.textContent = "登録";
       }
@@ -257,42 +278,37 @@
 
         if(!res.ok){
           toast("レシートのアップロードに失敗しました。レシートなしで保存します。");
-          await savePurchase(null);
+          await withTimeout(savePurchase(null), 8000);
           return;
         }
         const data = await res.json();
-        await savePurchase({ id:data.id, link:data.webViewLink });
+        await withTimeout(savePurchase({ id:data.id, link:data.webViewLink }), 8000);
         toast("保存しました ✅");
         $("form").reset(); $("thumb").style.display="none";
         $("date").value = new Date().toISOString().slice(0,10);
       }catch(err){
         toast("アップロード中にエラー: "+err.message);
-        await savePurchase(null);
+        await withTimeout(savePurchase(null), 8000);
       }
     }
 
     async function savePurchase(receipt, preset){
-      // preset が来ていればそれを使う（送信時に検証済）
       const title = preset?.title ?? $("title").value.trim();
       const payer = preset?.payer ?? $("payer").value;
       const dateStr = preset?.dateStr ?? $("date").value;
       const amount = preset?.amount ?? parseAmountComma($("amount").value);
       const memo = $("memo").value.trim();
-
       const dateObj = new Date(dateStr+"T00:00:00");
-      try{
-        await addDoc(collection(db,"purchases"),{
-          room: (new URL(location.href).searchParams.get("room")) || null,
-          title, amount, payer,
-          date: Timestamp.fromDate(dateObj),
-          memo: memo || null,
-          receiptFileId: receipt?.id || null,
-          receiptLink: receipt?.link || null,
-          createdAt: serverTimestamp()
-        });
-      }catch(err){
-        toast("保存エラー: "+err.message);
-      }
+
+      await addDoc(collection(db,"purchases"),{
+        room: (new URL(location.href).searchParams.get("room")) || null,
+        title, amount, payer,
+        date: Timestamp.fromDate(dateObj),
+        memo: memo || null,
+        receiptFileId: receipt?.id || null,
+        receiptLink: receipt?.link || null,
+        createdAt: serverTimestamp()
+      });
     }
   </script>
 </head>
