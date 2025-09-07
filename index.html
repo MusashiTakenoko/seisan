@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>グレース目白204 立替購入申請</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f7f8fb;
+      --card:#ffffff;
+      --text:#111827;      /* slate-900 */
+      --muted:#6b7280;     /* slate-500 */
+      --border:#e5e7eb;    /* slate-200 */
+      --accent:#2563eb;    /* blue-600 */
+      --accent-2:#3b82f6;  /* blue-500 */
+      --ok:#16a34a;
+      --warn:#ef4444;
+      --shadow:0 10px 30px rgba(0,0,0,.08);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans JP",sans-serif;
+      color:var(--text);
+      background: radial-gradient(80% 80% at 100% 0%, #eef2ff 0%, transparent 60%),
+                  radial-gradient(80% 80% at 0% 100%, #f1f5f9 0%, transparent 60%),
+                  var(--bg);
+    }
+    header{
+      position:sticky; top:0; z-index:20; background:rgba(255,255,255,.85);
+      backdrop-filter:saturate(180%) blur(10px);
+      border-bottom:1px solid var(--border); box-shadow: var(--shadow);
+    }
+    .navwrap{display:flex; align-items:center; justify-content:space-between; max-width:1100px; margin:0 auto; padding:14px 18px}
+    h1{font-size:18px; margin:0; letter-spacing:.2px}
+    .link{color:var(--accent); text-decoration:none; font-weight:600; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff}
+    .link:hover{background:#f8fafc}
+    main{max-width:1100px; margin:26px auto; padding:0 18px}
+    .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px; box-shadow: var(--shadow)}
+    .grid{display:grid; gap:14px}
+    @media(min-width:860px){ .grid-2{grid-template-columns:1fr 1fr} }
+    label{font-size:12px; color:var(--muted); display:block; margin:0 0 6px 2px}
+    input,select,button,textarea{
+      width:100%; padding:12px 14px; border:1px solid var(--border);
+      border-radius:14px; background:#fff; color:var(--text); font-size:16px;
+      transition:.15s;
+    }
+    input::placeholder,textarea::placeholder{color:#9ca3af}
+    input:focus,select:focus,textarea:focus,button:focus{outline:2px solid var(--accent); outline-offset:1px}
+    textarea{resize:vertical; min-height:100px}
+    .actions{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+    .btn-primary{background:linear-gradient(180deg, var(--accent), var(--accent-2)); border-color:transparent; color:white; font-weight:700}
+    .btn-primary:hover{filter:brightness(1.04)}
+    .note{font-size:12px; color:var(--muted)}
+    .toast{
+      position:fixed; left:50%; transform:translateX(-50%); bottom:18px;
+      background:#111827; color:#fff; padding:10px 14px; border-radius:12px;
+      border:1px solid #111827; box-shadow: var(--shadow); opacity:0; transition:.25s;
+    }
+    .toast.show{opacity:1}
+    .thumb{width:120px; height:120px; object-fit:cover; border:1px solid var(--border); border-radius:12px; display:none; margin-top:8px}
+    .title-hero{
+      font-size:22px; font-weight:800; letter-spacing:.3px; margin:0;
+      background: linear-gradient(90deg,#0f172a, #1f2937);
+      -webkit-background-clip:text; background-clip:text; color:transparent;
+    }
+    /* 視認性：select と date のアイコン（ライト用） */
+    select{
+      appearance:none; -webkit-appearance:none; -moz-appearance:none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat:no-repeat; background-position:right 12px center;
+      padding-right:44px;
+    }
+    select option, select optgroup{ background-color:#ffffff; color:#111827; }
+    /* 白テーマでは date アイコンは標準色のままが見やすいので filter は付けません */
+  </style>
+
+  <!-- Google Identity Services（Drive用） -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+
+    // ▼▼▼ あなたの Firebase 設定に置き換え ▼▼▼
+  const firebaseConfig = {
+    apiKey: "AIzaSyCXzUbcaVjRH67gIKkGcCadtaNGZv-MA7Q",
+    authDomain: "seisan-2025.firebaseapp.com",
+    projectId: "seisan-2025",
+    storageBucket: "seisan-2025.firebasestorage.app",
+    messagingSenderId: "399355996595",
+    appId: "1:399355996595:web:61425aa5c33ac43f2bc3c6",
+    measurementId: "G-23NZGYKTRL"
+  };
+    // ▲▲▲ ここまで ▲▲▲
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+
+    // ====== Google Drive 設定 ======
+    const CLIENT_ID = "67340506451-l8r92rinlbdsoj3ks4p1erlplo53qd0i.apps.googleusercontent.com"; // ←置換
+    const FOLDER_ID = "1im8F9n9YE2NCE0BCREJBCB2Fc1r0YUyv";                                   // ←置換
+    const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+    let tokenClient; let accessToken = null;
+
+    const $ = (id)=>document.getElementById(id);
+    const getParam = (k)=>new URL(location.href).searchParams.get(k)||"";
+    const room = getParam("room");
+    const MEMBERS = ["やまかん","もりがく","こうすけ"];
+
+    window.addEventListener("load", ()=>{
+      $("linkDash").href = `./dashboard.html?room=${encodeURIComponent(room||"")}`;
+      const d = new Date(); $("date").value = d.toISOString().slice(0,10);
+
+      $("amount").addEventListener("input", ()=>{
+        const digits = $("amount").value.replace(/[^\d]/g,"");
+        $("amount").value = digits ? Number(digits).toLocaleString("ja-JP") : "";
+      });
+
+      const sel = $("payer");
+      MEMBERS.forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o); });
+
+      $("file").addEventListener("change", ()=>{
+        const f = $("file").files[0];
+        if(f && /^image\//.test(f.type)){ $("thumb").src = URL.createObjectURL(f); $("thumb").style.display="block"; }
+        else $("thumb").style.display="none";
+      });
+
+      setupGisTokenClient();
+    });
+
+    function setupGisTokenClient(){
+      const start = Date.now();
+      const tryInit = ()=>{
+        if (typeof google !== "undefined" && google.accounts) {
+          tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID, scope: DRIVE_SCOPE, prompt: "",
+            callback: (resp)=>{ if(resp.error){ toast("Google認可エラー: "+resp.error); return; } accessToken = resp.access_token; doUploadAndSave(); }
+          });
+        } else if (Date.now() - start < 3000) {
+          setTimeout(tryInit, 100);
+        } else {
+          console.warn("Google Identity Services の初期化に時間がかかっています。");
+        }
+      };
+      tryInit();
+    }
+
+    function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), 2200); }
+    function parseAmountComma(v){ const n = Number(String(v).replace(/[,\s]/g,"")); return isFinite(n) ? n : 0; }
+
+    window.handleSubmit = (e)=>{
+      e.preventDefault();
+      $("submitBtn").disabled = true; $("submitBtn").textContent = "送信中…";
+      const file = $("file").files[0];
+      if(file){ if(accessToken) doUploadAndSave(); else tokenClient?.requestAccessToken?.(); }
+      else savePurchase(null);
+    };
+
+    async function doUploadAndSave(){
+      const file = $("file").files[0]; if(!file){ savePurchase(null); return; }
+      try{
+        const metadata = { name: `${Date.now()}_${file.name}`, parents: [FOLDER_ID] };
+        const boundary = "-------314159265358979323846";
+        const delimiter = `\r\n--${boundary}\r\n`;
+        const closeDelim = `\r\n--${boundary}--`;
+        const metaPart = 'Content-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(metadata);
+        const fileHeader = `Content-Type: ${file.type || "application/octet-stream"}\r\n\r\n`;
+        const arrBuf = await file.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrBuf)));
+        const body = delimiter + metaPart + delimiter + fileHeader + base64 + closeDelim;
+
+        const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",{
+          method:"POST",
+          headers:{ "Authorization":"Bearer "+accessToken, "Content-Type":"multipart/related; boundary="+boundary },
+          body
+        });
+        if(!res.ok){ toast("アップロード失敗"); $("submitBtn").disabled=false; $("submitBtn").textContent="登録"; return; }
+        const data = await res.json();
+        savePurchase({ id:data.id, link:data.webViewLink });
+      }catch(err){
+        toast("アップロード中にエラー: "+err.message);
+        $("submitBtn").disabled=false; $("submitBtn").textContent="登録";
+      }
+    }
+
+    async function savePurchase(receipt){
+      const title = $("title").value.trim();
+      const amount = parseAmountComma($("amount").value);
+      const payer = $("payer").value;
+      const dateStr = $("date").value;
+      const memo = $("memo").value.trim();
+
+      if(!title || !amount || !payer || !dateStr){
+        toast("未入力があります");
+        $("submitBtn").disabled=false; $("submitBtn").textContent="登録";
+        return;
+      }
+
+      const dateObj = new Date(dateStr+"T00:00:00");
+      try{
+        await addDoc(collection(db,"purchases"),{
+          room: room || null,
+          title, amount, payer,
+          date: Timestamp.fromDate(dateObj),
+          memo: memo || null,
+          receiptFileId: receipt?.id || null,
+          receiptLink: receipt?.link || null,
+          createdAt: serverTimestamp()
+        });
+        toast("保存しました ✅");
+        $("form").reset(); $("thumb").style.display="none";
+        $("date").value = dateStr;
+      }catch(err){
+        toast("保存エラー: "+err.message);
+      }finally{
+        $("submitBtn").disabled=false;
+        $("submitBtn").textContent="登録";
+      }
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <div class="navwrap">
+      <h1 class="title-hero">グレース目白204 立替購入申請</h1>
+      <a id="linkDash" class="link" href="./dashboard.html">ダッシュボード</a>
+    </div>
+  </header>
+
+  <main>
+    <form id="form" class="card" onsubmit="handleSubmit(event)">
+      <div class="grid grid-2">
+        <div>
+          <label>品名（必須）</label>
+          <input id="title" placeholder="例：キッチンペーパー" required />
+        </div>
+        <div>
+          <label>金額（円・必須）</label>
+          <input id="amount" type="tel" inputmode="numeric" placeholder="例：1,280" required />
+        </div>
+
+        <div>
+          <label>購入者（必須）</label>
+          <select id="payer" required>
+            <option value="" disabled selected>選択してください</option>
+          </select>
+        </div>
+        <div>
+          <label>購入日（必須）</label>
+          <input id="date" type="date" required />
+        </div>
+
+        <div style="grid-column:1/-1">
+          <label>備考（任意）</label>
+          <textarea id="memo" placeholder="例：洗剤まとめ買い。来月分と合わせて清算など"></textarea>
+        </div>
+
+        <div style="grid-column:1/-1">
+          <label>レシート（任意／画像 or PDF）</label>
+          <input id="file" type="file" accept="image/*,.pdf" />
+          <img id="thumb" class="thumb" alt="preview">
+          <div class="note" style="margin-top:6px">対応拡張子例：JPG / PNG / HEIC / PDF など（〜5MB目安）</div>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:10px">
+        <button id="submitBtn" class="btn-primary" type="submit">登録</button>
+        <span class="note">レシート無しの場合は事前にLINEで申告</span>
+      </div>
+    </form>
+
+    <div class="toast" id="toast" aria-live="polite"></div>
+  </main>
+</body>
+</html>

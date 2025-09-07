@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>管理ダッシュボード</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f7f8fb;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#6b7280;
+      --border:#e5e7eb;
+      --accent:#2563eb;
+      --accent-2:#3b82f6;
+      --shadow:0 10px 30px rgba(0,0,0,.08);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans JP",sans-serif;
+      background: radial-gradient(80% 80% at 100% 0%, #eef2ff 0%, transparent 60%),
+                  radial-gradient(80% 80% at 0% 100%, #f1f5f9 0%, transparent 60%),
+                  var(--bg);
+    }
+    header{
+      position:sticky; top:0; z-index:20; background:rgba(255,255,255,.85);
+      backdrop-filter:saturate(180%) blur(10px);
+      border-bottom:1px solid var(--border); box-shadow: var(--shadow);
+    }
+    .navwrap{display:flex; align-items:center; justify-content:space-between; max-width:1100px; margin:0 auto; padding:14px 18px}
+    h1{font-size:18px; margin:0; letter-spacing:.2px}
+    .link{color:var(--accent); text-decoration:none; font-weight:600; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff}
+    .link:hover{background:#f8fafc}
+    main{max-width:1100px; margin:26px auto; padding:0 18px}
+
+    .panel{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin:16px 0; box-shadow: var(--shadow)}
+    .row{display:grid; grid-template-columns:1fr auto; gap:12px; align-items:end}
+    input,button,select,textarea{
+      padding:12px 14px; border:1px solid var(--border); border-radius:14px; width:100%;
+      background:#fff; color:var(--text); font-size:16px; transition:.15s;
+    }
+    input:focus,select:focus,textarea:focus,button:focus{outline:2px solid var(--accent); outline-offset:1px}
+    label{font-size:12px; color:var(--muted); display:block; margin:0 0 6px 2px}
+    .btn{cursor:pointer}
+    .btn-primary{background:linear-gradient(180deg, var(--accent), var(--accent-2)); border-color:transparent; color:#fff; font-weight:700}
+    .btn-ghost{background:#fff}
+    .muted{color:var(--muted); font-size:12px}
+
+    .chips{display:flex; gap:8px; flex-wrap:wrap}
+    .chip{background:#f3f4f6; border:1px solid var(--border); border-radius:999px; padding:6px 10px; font-size:12px}
+
+    table{width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--border); border-radius:12px; overflow:hidden}
+    thead th{position:sticky; top:0; background:#f8fafc; border-bottom:1px solid var(--border); padding:10px; font-size:13px}
+    tbody td{border-bottom:1px solid var(--border); padding:10px; font-size:14px; vertical-align:top}
+    tbody tr:nth-child(odd){background:#fcfcfc}
+    .right{text-align:right}
+
+    /* モーダル */
+    .modal{position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; padding:16px}
+    .modal .box{background:#fff; border-radius:14px; padding:16px; max-width:540px; width:100%; border:1px solid var(--border); box-shadow: var(--shadow)}
+    .modal.show{display:flex}
+    .actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end}
+    .btn-danger{background:#ef4444; color:#fff; border-color:#ef4444}
+
+    /* グラフ */
+    .chart-panel{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin:16px 0; box-shadow: var(--shadow)}
+    .chart-head{display:flex; gap:12px; align-items:center; justify-content:space-between}
+    .chart-wrap{margin-top:12px; display:none}
+    .chart-wrap.show{display:block}
+    canvas{width:100%; max-width:760px; height:260px}
+
+    /* select 矢印（ライト用） */
+    select{
+      appearance:none; -webkit-appearance:none; -moz-appearance:none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat:no-repeat; background-position:right 12px center;
+      padding-right:44px;
+    }
+    select option, select optgroup{ background-color:#ffffff; color:#111827; }
+  </style>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    import {
+      getFirestore, collection, getDocs, query, where, orderBy, Timestamp,
+      doc, updateDoc, deleteDoc
+    } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+
+    // ▼▼▼ Firebase設定（index.html と同じ値に置き換え） ▼▼▼
+  const firebaseConfig = {
+    apiKey: "AIzaSyCXzUbcaVjRH67gIKkGcCadtaNGZv-MA7Q",
+    authDomain: "seisan-2025.firebaseapp.com",
+    projectId: "seisan-2025",
+    storageBucket: "seisan-2025.firebasestorage.app",
+    messagingSenderId: "399355996595",
+    appId: "1:399355996595:web:61425aa5c33ac43f2bc3c6",
+    measurementId: "G-23NZGYKTRL"
+  };
+    // ▲▲▲ ここまで ▲▲▲
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+
+    const $ = (id)=>document.getElementById(id);
+    const getParam = (k)=>new URL(location.href).searchParams.get(k)||"";
+    const fmt = (n)=>new Intl.NumberFormat("ja-JP").format(n||0);
+    const room = getParam("room");
+    const MEMBERS = ["やまかん","もりがく","こうすけ"];
+
+    let items = [];         // 表示中レコード
+    let editingId = null;   // 編集対象ID
+    let chartDrawn = false; // グラフ描画済
+
+    window.addEventListener("load", ()=>{
+      $("linkReg").href = `./index.html?room=${encodeURIComponent(room||"")}`;
+
+      const d = new Date();
+      $("month").value = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+
+      const payerSel = $("edit_payer");
+      MEMBERS.forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; payerSel.appendChild(o); });
+
+      $("reload").addEventListener("click", load);
+      $("fixedAmount").addEventListener("input", renderSummary);
+      $("closeModal").addEventListener("click", ()=>toggleModal(false));
+      $("saveEdit").addEventListener("click", saveEdit);
+      $("deleteRow").addEventListener("click", deleteRow);
+
+      $("toggleChart").addEventListener("click", ()=>{
+        const wrap = $("chartWrap");
+        const showing = wrap.classList.toggle("show");
+        if(showing && !chartDrawn){ updateChartFromData(); }
+      });
+      // 幅広では自動表示
+      if (window.matchMedia("(min-width: 800px)").matches) {
+        $("chartWrap").classList.add("show");
+      }
+
+      load();
+    });
+
+    function toggleModal(show){ $("modal").classList.toggle("show", !!show); }
+    function parseYen(v){ const n = Number(String(v).replace(/[,\s]/g,"")); return isFinite(n) ? n : 0; }
+
+    async function load(){
+      $("msg").textContent = "読込中…";
+      const ym = $("month").value.trim();
+      let start = null, end = null;
+      if(/^\d{4}-\d{2}$/.test(ym)){ start = new Date(ym+"-01T00:00:00"); end = new Date(start); end.setMonth(end.getMonth()+1); }
+
+      let qRef = collection(db,"purchases");
+      const conds = [];
+      if(room) conds.push(where("room","==",room));
+      if(start && end){
+        conds.push(where("date",">=", Timestamp.fromDate(start)));
+        conds.push(where("date","<",  Timestamp.fromDate(end)));
+      }
+      if(conds.length){ qRef = query(qRef, ...conds, orderBy("date","desc")); }
+      else            { qRef = query(qRef, orderBy("date","desc")); }
+
+      try{
+        const snap = await getDocs(qRef);
+        items = [];
+        snap.forEach(docu=> items.push({ id: docu.id, ...docu.data() }));
+
+        renderTable();
+        renderSummary();
+        if (document.getElementById("chartWrap").classList.contains("show")) {
+          updateChartFromData();
+        }
+        $("msg").textContent = items.length ? "" : "該当月のデータがありません。";
+      }catch(err){
+        $("msg").textContent = "読込エラー："+err.message+"（必要なら複合インデックスを作成してください）";
+      }
+    }
+
+    function renderTable(){
+      $("tbody").innerHTML = items.map(it=>{
+        const d = it.date?.toDate?.() ?? new Date();
+        const link = it.receiptLink ? `<a href="${it.receiptLink}" target="_blank" rel="noreferrer">レシート</a>` : `<span class="muted">なし</span>`;
+        const memo = it.memo ? `<div class="muted" style="margin-top:4px">${it.memo.replace(/</g,"&lt;")}</div>` : "";
+        return `<tr>
+          <td>${d.toLocaleDateString()}</td>
+          <td>${it.title || ""}${memo}</td>
+          <td class="right">¥${fmt(Number(it.amount)||0)}</td>
+          <td>${it.payer||""}</td>
+          <td>${link}</td>
+          <td><button data-id="${it.id}" class="btn btn-ghost">編集</button></td>
+        </tr>`;
+      }).join("");
+
+      Array.from(document.querySelectorAll('button[data-id]')).forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          const id = btn.getAttribute("data-id");
+          const row = items.find(x=>x.id===id); if(!row) return;
+          editingId = id;
+          $("edit_title").value = row.title || "";
+          $("edit_amount").value = fmt(Number(row.amount)||0);
+          $("edit_payer").value = row.payer || MEMBERS[0];
+          $("edit_date").value = row.date?.toDate?.().toISOString?.().slice(0,10) || "";
+          $("edit_memo").value = row.memo || "";
+          $("edit_receipt").innerHTML = row.receiptLink ? `<a href="${row.receiptLink}" target="_blank" rel="noreferrer">レシートを開く</a>` : `<span class="muted">なし</span>`;
+          toggleModal(true);
+        });
+      });
+    }
+
+    function renderSummary(){
+      const sumBy = new Map(MEMBERS.map(n=>[n,0]));
+      items.forEach(it=>{ const a=Number(it.amount)||0; if(sumBy.has(it.payer)) sumBy.set(it.payer, sumBy.get(it.payer)+a); });
+      const total = Array.from(sumBy.values()).reduce((s,v)=>s+v,0);
+
+      const chips = [`<span class="chip">総額：¥${fmt(total)}</span>`];
+      MEMBERS.forEach(n=> chips.push(`<span class="chip">${n} 支払：¥${fmt(sumBy.get(n)||0)}</span>`));
+      $("chips").innerHTML = chips.join(" ");
+
+      const fixed = parseYen($("fixedAmount").value);
+      $("transferList").innerHTML = MEMBERS.map(n=>{
+        const pay = sumBy.get(n)||0;
+        const diff = fixed ? (fixed - pay) : 0;
+        return `<div class="chip">${n}：今月の振り込み代 ¥${fmt(diff)}</div>`;
+      }).join(" ");
+    }
+
+    // 編集保存
+    async function saveEdit(){
+      if(!editingId) return;
+      const ref = doc(db, "purchases", editingId);
+      const amt = parseYen($("edit_amount").value);
+      const dateObj = $("edit_date").value ? new Date($("edit_date").value+"T00:00:00") : null;
+
+      try{
+        await updateDoc(ref, {
+          title: $("edit_title").value.trim(),
+          amount: amt,
+          payer: $("edit_payer").value,
+          date: dateObj ? Timestamp.fromDate(dateObj) : null,
+          memo: $("edit_memo").value.trim() || null
+        });
+        toggleModal(false);
+        await load();
+      }catch(err){ alert("更新に失敗しました: "+err.message); }
+    }
+
+    // 削除（確認）
+    async function deleteRow(){
+      if(!editingId) return;
+      if(!confirm("このレコードを削除します。よろしいですか？")) return;
+      try{
+        await deleteDoc(doc(db,"purchases",editingId));
+        toggleModal(false);
+        await load();
+      }catch(err){ alert("削除に失敗しました: "+err.message); }
+    }
+
+    // ====== グラフ機能（ライト配色） ======
+    function updateChartFromData(){
+      const sumBy = new Map(MEMBERS.map(n=>[n,0]));
+      items.forEach(it=>{ const a=Number(it.amount)||0; if(sumBy.has(it.payer)) sumBy.set(it.payer, sumBy.get(it.payer)+a); });
+      const labels = MEMBERS;
+      const values = labels.map(n => sumBy.get(n)||0);
+
+      const canvas = document.getElementById("barChart");
+      const ctx = canvas.getContext("2d");
+      drawBarChart(ctx, labels, values);
+      chartDrawn = true;
+    }
+
+    function drawBarChart(ctx, labels, values){
+      const DPR = window.devicePixelRatio || 1;
+      const cssW = ctx.canvas.clientWidth;
+      const cssH = ctx.canvas.clientHeight;
+      ctx.canvas.width  = Math.floor(cssW * DPR);
+      ctx.canvas.height = Math.floor(cssH * DPR);
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+
+      const P = {l: 48, r: 16, t: 16, b: 40};
+      const W = cssW - P.l - P.r;
+      const H = cssH - P.t - P.b;
+
+      ctx.clearRect(0,0,cssW,cssH);
+
+      // 軸・グリッド（薄いグレー）
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(P.l, P.t);
+      ctx.lineTo(P.l, P.t + H);
+      ctx.lineTo(P.l + W, P.t + H);
+      ctx.stroke();
+
+      const maxVal = Math.max(1, ...values);
+      ctx.fillStyle = "#6b7280";
+      ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      for(let i=0;i<=4;i++){
+        const y = P.t + H - (H * i / 4);
+        const v = Math.round(maxVal * i / 4);
+        ctx.fillText("¥"+v.toLocaleString("ja-JP"), 6, y+4);
+        ctx.strokeStyle = "#f1f5f9";
+        ctx.beginPath(); ctx.moveTo(P.l, y); ctx.lineTo(P.l+W, y); ctx.stroke();
+      }
+
+      // 棒（ブルー系グラデ）
+      const n = labels.length, gap = 20;
+      const barW = Math.max(24, (W - gap*(n+1))/n);
+      const baseY = P.t + H;
+
+      for(let i=0;i<n;i++){
+        const x = P.l + gap + i*(barW+gap);
+        const h = Math.round(H * (values[i]/maxVal));
+        const y = baseY - h;
+
+        const grd = ctx.createLinearGradient(0,y,0,baseY);
+        grd.addColorStop(0, "#93c5fd");   // blue-300
+        grd.addColorStop(1, "#2563eb");   // blue-600
+        ctx.fillStyle = grd;
+        ctx.fillRect(x, y, barW, h);
+
+        ctx.fillStyle = "#111827"; ctx.textAlign = "center";
+        ctx.fillText(labels[i], x + barW/2, baseY + 16);
+        ctx.fillText("¥"+(values[i]||0).toLocaleString("ja-JP"), x + barW/2, y - 6);
+      }
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <div class="navwrap">
+      <h1>管理ダッシュボード</h1>
+      <a id="linkReg" class="link" href="./index.html">購入申請画面</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- フィルター＆サマリー -->
+    <div class="panel">
+      <div class="row">
+        <div>
+          <label>対象月（YYYY-MM）</label>
+          <input id="month" placeholder="2025-09" />
+        </div>
+        <div><button id="reload" class="btn btn-ghost">再読み込み</button></div>
+      </div>
+
+      <div style="display:grid; gap:14px; grid-template-columns:1fr 1fr; margin-top:12px">
+        <div>
+          <label>振込固定額（任意・各自の今月の振り込み代の基準）</label>
+          <input id="fixedAmount" placeholder="例：80,000" />
+          <div class="muted" style="margin-top:6px">※ 入力すると「今月の振り込み代 = 振込固定額 − 個人の今月支払額」を表示します</div>
+        </div>
+        <div>
+          <label>サマリー</label>
+          <div id="chips" class="chips"></div>
+        </div>
+      </div>
+
+      <div class="muted" id="msg" style="margin-top:6px"></div>
+      <div id="transferList" class="chips" style="margin-top:8px"></div>
+    </div>
+
+    <!-- グラフ：各人の支払合計 -->
+    <div class="chart-panel">
+      <div class="chart-head">
+        <div>
+          <b>各人の支払（棒グラフ）</b>
+          <div class="muted" style="margin-top:2px">スマホでは「グラフを表示」ボタンを押すと表示されます</div>
+        </div>
+        <button id="toggleChart" class="btn btn-ghost" type="button">グラフを表示</button>
+      </div>
+      <div id="chartWrap" class="chart-wrap"><canvas id="barChart"></canvas></div>
+    </div>
+
+    <!-- 明細テーブル -->
+    <div class="panel" style="overflow:auto">
+      <table>
+        <thead>
+          <tr><th>日付</th><th>品名 / 備考</th><th class="right">金額</th><th>購入者</th><th>レシート</th><th>操作</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- 編集モーダル -->
+  <div class="modal" id="modal" role="dialog" aria-modal="true">
+    <div class="box">
+      <h3 style="margin-top:0">レコード編集</h3>
+      <div style="display:grid; gap:12px">
+        <div>
+          <label>品名</label>
+          <input id="edit_title" />
+        </div>
+        <div>
+          <label>金額（円）</label>
+          <input id="edit_amount" />
+        </div>
+        <div>
+          <label>購入者</label>
+          <select id="edit_payer"></select>
+        </div>
+        <div>
+          <label>購入日</label>
+          <input id="edit_date" type="date" />
+        </div>
+        <div>
+          <label>備考</label>
+          <textarea id="edit_memo" rows="3"></textarea>
+        </div>
+        <div id="edit_receipt" class="muted"></div>
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn btn-danger" id="deleteRow" type="button">削除</button>
+        <button class="btn btn-ghost" id="closeModal" type="button">閉じる</button>
+        <button class="btn btn-primary" id="saveEdit" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
