@@ -270,9 +270,10 @@ tokenClient.requestAccessToken();
       }
     };
 
-    async function doUploadAndSave(){
-      const file = $("file").files[0];
-      if(!file){ await savePurchase(null); return; }
+async function doUploadAndSave(){
+  const file = $("file").files[0];
+  if(!file){ log("doUploadAndSave: no file; fallback save"); await savePurchase(null); return; }
+  log("doUploadAndSave: start upload to Drive");
       try{
         const metadata = { name: `${Date.now()}_${file.name}`, parents: [FOLDER_ID] };
         const boundary = "-------314159265358979323846";
@@ -385,6 +386,7 @@ tokenClient.requestAccessToken();
   </main>
 </body>
 </html>
+
 
 
 
