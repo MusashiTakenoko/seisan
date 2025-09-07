@@ -61,7 +61,7 @@
     select option,select optgroup{background:#fff; color:#111827}
   </style>
 
-  <!-- Firebase SDK -->
+  <!-- Firebase SDK（必要） -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
     import { getFirestore, collection, addDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
@@ -80,25 +80,78 @@
     const app = initializeApp(firebaseConfig);
     const db  = getFirestore(app);
 
-    // ====== Google Drive（必要時のみロード） ======
+    // ====== Google Drive（必要時だけ動的ロード） ======
     const CLIENT_ID = "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com"; // ←置換
-    const FOLDER_ID = "YOUR_DRIVE_FOLDER_ID";                                    // ←置換
+    const FOLDER_ID = "YOUR_DRIVE_FOLDER_ID";                                   // ←置換
     const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
     let tokenClient = null, accessToken = null, gisLoaded = false, gisLoading = false;
 
-    // ユーティリティ
+    function ensureGisReady(timeoutMs = 4000){
+      return new Promise((resolve)=>{
+        if (gisLoaded && tokenClient) return resolve(true);
+        if (gisLoading) {
+          const started = Date.now();
+          const t = setInterval(()=>{
+            if (gisLoaded && tokenClient){ clearInterval(t); resolve(true); }
+            else if (Date.now()-started > timeoutMs){ clearInterval(t); resolve(false); }
+          }, 100);
+          return;
+        }
+        gisLoading = true;
+        const s = document.createElement("script");
+        s.src = "https://accounts.google.com/gsi/client"; s.async = true; s.defer = true;
+        s.onload = ()=>{
+          gisLoaded = true;
+          try{
+            tokenClient = google.accounts.oauth2.initTokenClient({
+              client_id: CLIENT_ID, scope: DRIVE_SCOPE, prompt: "",
+              callback: (resp)=>{
+                if(resp?.error){ toast("Google認可エラー: "+resp.error); return; }
+                accessToken = resp.access_token;
+                doUploadAndSave().catch(err=>{
+                  toast("アップロード中にエラー: "+err.message);
+                  savePurchase(null);
+                });
+              }
+            });
+            resolve(true);
+          }catch{ resolve(false); }
+        };
+        s.onerror = ()=>resolve(false);
+        document.head.appendChild(s);
+      });
+    }
+
+    // ====== ユーティリティ ======
     const $ = (id)=>document.getElementById(id);
     const getParam = (k)=>new URL(location.href).searchParams.get(k)||"";
     const room = getParam("room");
     const MEMBERS = ["やまかん","もりがく","こうすけ"];
 
+    // 全角→半角（数字/カンマ/ドット）
+    function toHalfWidthDigits(str){
+      return String(str).replace(/[０-９，．]/g, ch => {
+        if (ch === '，') return ',';
+        if (ch === '．') return '.';
+        return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+      });
+    }
+    // カンマ付き金額を数値へ（空は0、0円も許可）
+    function parseAmountComma(v){
+      const s = toHalfWidthDigits(String(v));
+      const n = Number(s.replace(/[^\d]/g,""));
+      return isFinite(n) ? n : 0;
+    }
+    function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), 2200); }
+
     window.addEventListener("load", ()=>{
       $("linkDash").href = `./dashboard.html?room=${encodeURIComponent(room||"")}`;
       const d = new Date(); $("date").value = d.toISOString().slice(0,10);
 
-      // 金額：カンマ自動付与
+      // 金額：全角→半角→カンマフォーマット
       $("amount").addEventListener("input", ()=>{
-        const digits = $("amount").value.replace(/[^\d]/g,"");
+        const raw = toHalfWidthDigits($("amount").value);
+        const digits = raw.replace(/[^\d]/g,"");
         $("amount").value = digits ? Number(digits).toLocaleString("ja-JP") : "";
       });
 
@@ -114,70 +167,77 @@
       });
     });
 
-    // GIS を必要時にだけ動的ロード
-    function ensureGisReady(){
-      return new Promise((resolve, reject)=>{
-        if (gisLoaded && tokenClient) return resolve();
-        if (gisLoading) {
-          const t = setInterval(()=>{ if(gisLoaded && tokenClient){ clearInterval(t); resolve(); } }, 100);
-          setTimeout(()=>{ clearInterval(t); if(!gisLoaded) reject(new Error("GIS loading timeout")); }, 4000);
-          return;
-        }
-        gisLoading = true;
-        const s = document.createElement("script");
-        s.src = "https://accounts.google.com/gsi/client"; s.async = true; s.defer = true;
-        s.onload = ()=>{
-          gisLoaded = true;
-          tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID, scope: DRIVE_SCOPE, prompt: "",
-            callback: (resp)=>{ if(resp.error){ toast("Google認可エラー: "+resp.error); return; }
-              accessToken = resp.access_token; doUploadAndSave(); }
-          });
-          resolve();
-        };
-        s.onerror = ()=>reject(new Error("Google Identity Services を読み込めませんでした"));
-        document.head.appendChild(s);
-      });
-    }
-
-    function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), 2200); }
-    function parseAmountComma(v){ const n = Number(String(v).replace(/[,\s]/g,"")); return isFinite(n) ? n : 0; }
-
-    // 送信
+    // ====== 送信処理（0円OK／レシート任意／タイムアウト保護） ======
     window.handleSubmit = async (e)=>{
       e.preventDefault();
-      $("submitBtn").disabled = true; $("submitBtn").textContent = "送信中…";
-
-      const file = $("file").files[0];
-
-      // ★ レシート未選択：そのまま保存（Googleログイン不要）
-      if(!file){
-        await savePurchase(null);
-        $("submitBtn").disabled=false; $("submitBtn").textContent="登録";
-        return;
-      }
-
-      // レシート選択時のみ、GIS をロード→認可→Driveへアップロード
+      const btn = $("submitBtn");
+      btn.disabled = true;
+      btn.textContent = "送信中…";
       try{
-        if(!CLIENT_ID || !FOLDER_ID || CLIENT_ID.includes("YOUR_GOOGLE_OAUTH_CLIENT_ID")){
-          toast("レシート添付は現在オフです（管理者にCLIENT_IDとFOLDER_IDの設定を依頼してください）");
-          await savePurchase(null);
-          $("submitBtn").disabled=false; $("submitBtn").textContent="登録";
+        // 日付フォールバック
+        if (!$("date").value) {
+          const d = new Date();
+          $("date").value = d.toISOString().slice(0,10);
+        }
+
+        const title = $("title").value.trim();
+        const payer = $("payer").value;
+        const dateStr = $("date").value;
+
+        // 0円はOK、ただし空欄はNG（空欄=文字がない）
+        const amountStr = $("amount").value.trim();
+        const amount = parseAmountComma(amountStr);
+
+        if(!title || !payer || !dateStr || amountStr===""){
+          toast("未入力があります");
           return;
         }
-        await ensureGisReady();
-        if(accessToken){ await doUploadAndSave(); }
-        else { tokenClient.requestAccessToken(); }
+
+        const file = $("file").files[0];
+
+        // レシート未選択：そのまま保存（ログイン不要）
+        if(!file){
+          await savePurchase(null, {title, amount, payer, dateStr});
+          toast("保存しました ✅（レシートなし）");
+          $("form").reset(); $("thumb").style.display="none";
+          $("date").value = dateStr; // 入力した日付を維持
+          return;
+        }
+
+        // レシートあり：GISが使えなければ“レシートなし保存”にフォールバック
+        if(!CLIENT_ID || !FOLDER_ID || CLIENT_ID.includes("YOUR_GOOGLE_OAUTH_CLIENT_ID")){
+          toast("Drive設定が未完了のため、レシートなしで保存しました。");
+          await savePurchase(null, {title, amount, payer, dateStr});
+          $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
+          return;
+        }
+
+        const ok = await ensureGisReady(4000);
+        if(!ok || !tokenClient){
+          toast("Google連携を初期化できませんでした。レシートなしで保存します。");
+          await savePurchase(null, {title, amount, payer, dateStr});
+          $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
+          return;
+        }
+
+        // 認可要求（成功時は callback 内で doUploadAndSave → savePurchase まで実行）
+        tokenClient.requestAccessToken();
+
       }catch(err){
-        toast(err.message||"Google連携の初期化に失敗しました");
-        await savePurchase(null);
+        toast("送信中エラー: "+(err?.message||err));
+        try{
+          // 最低限、データだけは残す（レシートなし）
+          await savePurchase(null);
+        }catch{}
       }finally{
-        $("submitBtn").disabled=false; $("submitBtn").textContent="登録";
+        btn.disabled = false;
+        btn.textContent = "登録";
       }
     };
 
     async function doUploadAndSave(){
-      const file = $("file").files[0]; if(!file){ await savePurchase(null); return; }
+      const file = $("file").files[0];
+      if(!file){ await savePurchase(null); return; }
       try{
         const metadata = { name: `${Date.now()}_${file.name}`, parents: [FOLDER_ID] };
         const boundary = "-------314159265358979323846";
@@ -194,44 +254,42 @@
           headers:{ "Authorization":"Bearer "+accessToken, "Content-Type":"multipart/related; boundary="+boundary },
           body
         });
-        if(!res.ok){ toast("アップロード失敗（ログインや許可を確認）"); await savePurchase(null); return; }
+
+        if(!res.ok){
+          toast("レシートのアップロードに失敗しました。レシートなしで保存します。");
+          await savePurchase(null);
+          return;
+        }
         const data = await res.json();
         await savePurchase({ id:data.id, link:data.webViewLink });
         toast("保存しました ✅");
-        $("form").reset(); $("thumb").style.display="none"; // 日付だけ再設定
-        const d = new Date(); $("date").value = d.toISOString().slice(0,10);
+        $("form").reset(); $("thumb").style.display="none";
+        $("date").value = new Date().toISOString().slice(0,10);
       }catch(err){
         toast("アップロード中にエラー: "+err.message);
         await savePurchase(null);
       }
     }
 
-    async function savePurchase(receipt){
-      const title = $("title").value.trim();
-      const amount = parseAmountComma($("amount").value);
-      const payer = $("payer").value;
-      const dateStr = $("date").value;
+    async function savePurchase(receipt, preset){
+      // preset が来ていればそれを使う（送信時に検証済）
+      const title = preset?.title ?? $("title").value.trim();
+      const payer = preset?.payer ?? $("payer").value;
+      const dateStr = preset?.dateStr ?? $("date").value;
+      const amount = preset?.amount ?? parseAmountComma($("amount").value);
       const memo = $("memo").value.trim();
-
-      if(!title || !amount || !payer || !dateStr){
-        toast("未入力があります");
-        return;
-      }
 
       const dateObj = new Date(dateStr+"T00:00:00");
       try{
         await addDoc(collection(db,"purchases"),{
-          room: room || null, title, amount, payer,
+          room: (new URL(location.href).searchParams.get("room")) || null,
+          title, amount, payer,
           date: Timestamp.fromDate(dateObj),
           memo: memo || null,
           receiptFileId: receipt?.id || null,
           receiptLink: receipt?.link || null,
           createdAt: serverTimestamp()
         });
-        if(!receipt){ // レシートなし保存時のトースト
-          toast("保存しました ✅（レシートなし）");
-          $("form").reset(); $("thumb").style.display="none"; $("date").value = dateStr;
-        }
       }catch(err){
         toast("保存エラー: "+err.message);
       }
@@ -254,8 +312,8 @@
           <input id="title" placeholder="例：キッチンペーパー" required />
         </div>
         <div>
-          <label>金額（円・必須）</label>
-          <input id="amount" type="tel" inputmode="numeric" placeholder="例：1,280" required />
+          <label>金額（円・必須／0円可）</label>
+          <input id="amount" type="tel" inputmode="numeric" placeholder="例：1,280（全角でもOK）" required />
         </div>
 
         <div>
