@@ -283,42 +283,64 @@ tokenClient.requestAccessToken();
     };
 
 async function doUploadAndSave(){
-  const file = $("file").files[0];
-  if(!file){ log("doUploadAndSave: no file; fallback save"); await savePurchase(null); return; }
-  log("doUploadAndSave: start upload to Drive");
-      try{
-        const metadata = { name: `${Date.now()}_${file.name}`, parents: [FOLDER_ID] };
-        const boundary = "-------314159265358979323846";
-        const delimiter = `\r\n--${boundary}\r\n`;
-        const closeDelim = `\r\n--${boundary}--`;
-        const metaPart = 'Content-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(metadata);
-        const fileHeader = `Content-Type: ${file.type || "application/octet-stream"}\r\n\r\n`;
-        const arrBuf = await file.arrayBuffer();
-        const base64 = arrayBufferToBase64(arrBuf);
-        const body = delimiter + metaPart + delimiter + fileHeader + base64 + closeDelim;
+  const file = document.getElementById("file").files[0];
+  if(!file){ await savePurchase(null); return; }
 
-        const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",{
-          method:"POST",
-          headers:{ "Authorization":"Bearer "+accessToken, "Content-Type":"multipart/related; boundary="+boundary },
-          body
-        });
+  try{
+    // 1) メタデータ + 生ファイル を multipart で送る（FormData なら壊れません）
+    const metadata = {
+      name: `${Date.now()}_${file.name}`,
+      parents: [FOLDER_ID],
+      mimeType: file.type || "application/octet-stream"
+    };
 
-        if(!res.ok){
-          toast("レシートのアップロードに失敗しました。レシートなしで保存します。");
-          await savePurchase(null);
-          return;
-        }
-        const data = await res.json();
-        await savePurchase({ id:data.id, link:data.webViewLink });
-        toast("保存しました ✅");
-        $("form").reset(); $("thumb").style.display="none";
-        $("date").value = new Date().toISOString().slice(0,10);
-      }catch(err){
-        log("doUploadAndSave error: "+(err?.message||err));
-        toast("アップロード中にエラー: "+(err?.message||err));
-        await savePurchase(null);
+    const form = new FormData();
+    form.append(
+      "metadata",
+      new Blob([JSON.stringify(metadata)], { type: "application/json" })
+    );
+    form.append("file", file, file.name);
+
+    const createRes = await fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer " + accessToken },
+        body: form
       }
+    );
+    if(!createRes.ok){
+      const t = await createRes.text().catch(()=> "");
+      throw new Error("Drive へのアップロードに失敗: " + t);
     }
+    const created = await createRes.json();
+
+    // 2) 共有権限（リンクを知っている人は閲覧可）
+    //    ※自分だけで使うならこのブロックは省略可
+    await fetch(`https://www.googleapis.com/drive/v3/files/${created.id}/permissions`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + accessToken,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ role: "reader", type: "anyone" })
+    }).catch(()=>{}); // 失敗しても致命ではない
+
+    // 3) Firestore へ保存
+    await savePurchase({ id: created.id, link: created.webViewLink });
+
+    toast("保存しました ✅");
+    document.getElementById("form").reset();
+    document.getElementById("thumb").style.display = "none";
+    document.getElementById("date").value = new Date().toISOString().slice(0,10);
+
+  }catch(err){
+    log("doUploadAndSave error: " + (err?.message || err));
+    toast("アップロード中にエラー: " + (err?.message || err));
+    // 最低限、レシート無しで保存
+    await savePurchase(null);
+  }
+}
 
     // ④ savePurchase：例外は握りつぶさず呼び出し元に投げる
     async function savePurchase(receipt, preset){
@@ -398,6 +420,7 @@ async function doUploadAndSave(){
   </main>
 </body>
 </html>
+
 
 
 
